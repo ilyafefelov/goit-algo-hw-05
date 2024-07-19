@@ -1,20 +1,26 @@
 def boyer_moore(text, pattern):
     m = len(pattern)
     n = len(text)
+    
     if m == 0:
         return 0
-    last = {pattern[i]: i for i in range(m)}
-    i = m - 1
-    k = m - 1
-    while i < n:
-        if text[i] == pattern[k]:
-            if k == 0:
-                return i
-            else:
-                i -= 1
-                k -= 1
+    
+    # Preprocessing
+    bad_char = {}
+    for i in range(m):
+        bad_char[pattern[i]] = i
+    
+    # Searching
+    s = 0
+    while s <= n - m:
+        j = m - 1
+        
+        while j >= 0 and pattern[j] == text[s + j]:
+            j -= 1
+        
+        if j < 0:
+            return s  # Pattern found at position s
         else:
-            j = last.get(text[i], -1)
-            i += m - min(k, j + 1)
-            k = m - 1
-    return -1
+            s += max(1, j - bad_char.get(text[s + j], -1))
+    
+    return -1  # Pattern not found

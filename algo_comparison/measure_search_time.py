@@ -1,87 +1,111 @@
 import timeit
-import gdown
+import requests
 import boyer_moore
-import kmp_search
+import kmp_search as kmp
 import rabin_karp
 
-# Завантаження файлів із Google Drive
-file1_url = 'https://drive.google.com/uc?id=18_R5vEQ3eDuy2VdV3K5Lu-R-B-adxXZh'
-file2_url = 'https://drive.google.com/uc?id=13hSt4JkJc11nckZZz2yoFHYL89a4XkMZ'
 
-gdown.download(file1_url, 'article1.txt', quiet=False)
-gdown.download(file2_url, 'article2.txt', quiet=False)
-
-# Функція для визначення кодування та завантаження тексту
-def read_file(file_path):
-    encodings = ['utf-8', 'latin-1', 'cp1252']
-    for enc in encodings:
+def download_article(url, encodings=['utf-8', 'utf-16', 'cp1251']):
+    response = requests.get(url)
+    response.raise_for_status()
+    
+    for encoding in encodings:
         try:
-            with open(file_path, 'r', encoding=enc) as file:
-                return file.read()
+            return response.content.decode(encoding)
         except UnicodeDecodeError:
             continue
-    raise UnicodeDecodeError(f"Не вдалося прочитати файл {file_path} з використанням доступних кодувань.")
+    raise ValueError("Unable to decode the content with the provided encodings")
 
-# Функція для вимірювання часу виконання
-def measure_search_time(search_func, text, pattern):
-    globals_dict = globals()
-    globals_dict['text'] = text
-    globals_dict['pattern'] = pattern
-    setup_code = f'from __main__ import {search_func.__module__}'
-    test_code = f'{search_func.__module__}.{search_func.__name__}(text, pattern)'
-    times = timeit.repeat(setup=setup_code, stmt=test_code, globals=globals_dict, repeat=5, number=1)
-    return min(times)
+# Download and decode articles
+article1_url = 'https://drive.google.com/uc?id=18_R5vEQ3eDuy2VdV3K5Lu-R-B-adxXZh'
+article2_url = 'https://drive.google.com/uc?id=13hSt4JkJc11nckZZz2yoFHYL89a4XkMZ'
 
-# Аналіз результатів та підсумки
-def print_summary(results):
-    summary = {}
-    for case in ['article1_existing', 'article1_non_existing', 'article2_existing', 'article2_non_existing']:
-        best_algo = min(results, key=lambda algo: results[algo][case])
-        summary[case] = (best_algo, results[best_algo][case])
+article1 = download_article(article1_url)
+article2 = download_article(article2_url)
+
+# Patterns to search
+pattern_existing = "а"
+pattern_non_existing = "неіснуючийпатерн"
+
+# Function to test algorithms
+def test_algorithms(article, pattern_existing, pattern_non_existing, repetitions=100):
+    results = {
+        'Boyer-Moore': {'Existing': 0, 'Non-existing': 0, 'Existing_time': 0, 'Non-existing_time': 0},
+        'KMP': {'Existing': 0, 'Non-existing': 0, 'Existing_time': 0, 'Non-existing_time': 0},
+        'Rabin-Karp': {'Existing': 0, 'Non-existing': 0, 'Existing_time': 0, 'Non-existing_time': 0},
+    }
     
-    print("\n### Підсумки аналізу ###")
-    for case, (algo, time) in summary.items():
-        print(f"Найшвидший алгоритм для {case}: {algo} з часом {time:.6f} секунд")
+    def measure_time(func, *args):
+        timer = timeit.Timer(lambda: func(*args))
+        return timer.timeit(number=repetitions) / repetitions
+
+    print("Testing Boyer-Moore on Existing Pattern")
+    boyer_moore_result_existing = boyer_moore.boyer_moore(article, pattern_existing)
+    results['Boyer-Moore']['Existing_time'] = measure_time(boyer_moore.boyer_moore, article, pattern_existing)
+    results['Boyer-Moore']['Existing'] = 1 if boyer_moore_result_existing != -1 else 0
+
+    print("Testing Boyer-Moore on Non-existing Pattern")
+    boyer_moore_result_non_existing = boyer_moore.boyer_moore(article, pattern_non_existing)
+    results['Boyer-Moore']['Non-existing_time'] = measure_time(boyer_moore.boyer_moore, article, pattern_non_existing)
+    results['Boyer-Moore']['Non-existing'] = 1 if boyer_moore_result_non_existing != -1 else 0
+
+    print("Testing KMP on Existing Pattern")
+    kmp_result_existing = kmp.kmp_search(article, pattern_existing)
+    results['KMP']['Existing_time'] = measure_time(kmp.kmp_search, article, pattern_existing)
+    results['KMP']['Existing'] = 1 if kmp_result_existing != -1 else 0
+
+    print("Testing KMP on Non-existing Pattern")
+    kmp_result_non_existing = kmp.kmp_search(article, pattern_non_existing)
+    results['KMP']['Non-existing_time'] = measure_time(kmp.kmp_search, article, pattern_non_existing)
+    results['KMP']['Non-existing'] = 1 if kmp_result_non_existing != -1 else 0
+
+    print("Testing Rabin-Karp on Existing Pattern")
+    rabin_karp_result_existing = rabin_karp.rabin_karp(article, pattern_existing)
+    results['Rabin-Karp']['Existing_time'] = measure_time(rabin_karp.rabin_karp, article, pattern_existing)
+    results['Rabin-Karp']['Existing'] = 1 if rabin_karp_result_existing != -1 else 0
+
+    print("Testing Rabin-Karp on Non-existing Pattern")
+    rabin_karp_result_non_existing = rabin_karp.rabin_karp(article, pattern_non_existing)
+    results['Rabin-Karp']['Non-existing_time'] = measure_time(rabin_karp.rabin_karp, article, pattern_non_existing)
+    results['Rabin-Karp']['Non-existing'] = 1 if rabin_karp_result_non_existing != -1 else 0
+    
+    return results
+
+# Run the tests
+results_article1 = test_algorithms(article1, pattern_existing, pattern_non_existing)
+results_article2 = test_algorithms(article2, pattern_existing, pattern_non_existing)
+
+# Determine the quickest and slowest algorithms
+def summarize_results(results):
+    summary = {
+        'quickest_existing': min(results, key=lambda x: results[x]['Existing_time']),
+        'slowest_non_existing': max(results, key=lambda x: results[x]['Non-existing_time']),
+    }
     return summary
 
-if __name__ == "__main__":
-    # Завантаження текстових файлів з визначенням кодування
-    article1 = read_file('article1.txt')
-    article2 = read_file('article2.txt')
+summary_article1 = summarize_results(results_article1)
+summary_article2 = summarize_results(results_article2)
 
-    # Підрядки для пошуку
-    existing_substring = "text"  # Замість цього підрядка вставте той, що дійсно існує в текстах
-    non_existing_substring = "non_existing_substring"  # Замість цього підрядка вставте той, що не існує в текстах
+# Write the results to readme.md
+with open('./readme.md', 'w', encoding='utf-8') as file:
+    file.write("# Comparative Analysis of Substring Search Algorithms\n\n")
+    
+    file.write("## Article 1 Results\n")
+    for algo in results_article1:
+        file.write(f"**{algo}:**\n")
+        file.write(f"- Existing: {results_article1[algo]['Existing']} times, Time: {results_article1[algo]['Existing_time']} seconds\n")
+        file.write(f"- Non-existing: {results_article1[algo]['Non-existing']} times, Time: {results_article1[algo]['Non-existing_time']} seconds\n")
+    
+    file.write("\n## Article 2 Results\n")
+    for algo in results_article2:
+        file.write(f"**{algo}:**\n")
+        file.write(f"- Existing: {results_article2[algo]['Existing']} times, Time: {results_article2[algo]['Existing_time']} seconds\n")
+        file.write(f"- Non-existing: {results_article2[algo]['Non-existing']} times, Time: {results_article2[algo]['Non-existing_time']} seconds\n")
+    
+    file.write("\n## Summary\n")
+    file.write(f"Article 1: The quickest for existing was {summary_article1['quickest_existing']}\n")
+    file.write(f"Article 1: The slowest for non-existing was {summary_article1['slowest_non_existing']}\n")
+    file.write(f"Article 2: The quickest for existing was {summary_article2['quickest_existing']}\n")
+    file.write(f"Article 2: The slowest for non-existing was {summary_article2['slowest_non_existing']}\n")
 
-    # Алгоритми пошуку
-    search_algorithms = [boyer_moore.boyer_moore, kmp_search.kmp_search, rabin_karp.rabin_karp]
-
-    # Вимірювання часу виконання
-    results = {}
-    for search_func in search_algorithms:
-        results[search_func.__name__] = {}
-        results[search_func.__name__]['article1_existing'] = measure_search_time(search_func, article1, existing_substring)
-        results[search_func.__name__]['article1_non_existing'] = measure_search_time(search_func, article1, non_existing_substring)
-        results[search_func.__name__]['article2_existing'] = measure_search_time(search_func, article2, existing_substring)
-        results[search_func.__name__]['article2_non_existing'] = measure_search_time(search_func, article2, non_existing_substring)
-
-    # Виведення результатів
-    for algo_name, algo_results in results.items():
-        print(f"{algo_name}:")
-        for case, time_taken in algo_results.items():
-            print(f"  {case}: {time_taken:.6f} seconds")
-
-    # Виведення підсумків
-    summary = print_summary(results)
-
-    # Запис результатів в README.md
-    with open('README.md', 'w') as f:
-        f.write("# Порівняльний аналіз алгоритмів пошуку підрядка\n\n")
-        f.write("### Результати вимірювань часу виконання:\n")
-        for algo_name, algo_results in results.items():
-            f.write(f"**{algo_name}**:\n")
-            for case, time_taken in algo_results.items():
-                f.write(f"- {case}: {time_taken:.6f} seconds\n")
-        f.write("\n### Підсумки аналізу ###\n")
-        for case, (algo, time) in summary.items():
-            f.write(f"Найшвидший алгоритм для {case}: {algo} з часом {time:.6f} секунд\n")
+print("Results have been written to readme.md")
